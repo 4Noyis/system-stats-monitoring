@@ -1,0 +1,10 @@
+# Go stuff
+bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# IDEs
+.vscode/
+.idea/
