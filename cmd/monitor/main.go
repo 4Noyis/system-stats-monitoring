@@ -6,12 +6,15 @@ import (
 
 func main() {
 
-	stats.GetCpuUsage()
-
-	stats.CoreCounts()
+	// stats.GetCpuUsage()
 
 	stats.GetSystemInfo()
 
+	stats.GetCPUInfo()
+
+	stats.GetMemInfo()
+
+	stats.GetDownloadInfo()
 	/*
 	   err := logger.LogCPUStats(2*time.Second, 5, "json", "cpu_log.json")
 
