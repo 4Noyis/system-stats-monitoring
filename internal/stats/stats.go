@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -51,14 +52,17 @@ func GetSystemInfo() error {
 
 /* <---------------- CPU INFO -----------------> */
 
+// GetCpuUsage is kept for one-time snapshot
 func GetCpuUsage() error {
 	percent, err := cpu.Percent(time.Second, false)
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("  Total CPU Usage: %.2f%%\n\n", percent[0])
-
+	if len(percent) > 0 {
+		fmt.Printf("  Total CPU Usage (snapshot): %.2f%%\n\n", percent[0])
+	} else {
+		fmt.Printf("  Could not get CPU usage snapshot.\n")
+	}
 	return nil
 }
 
@@ -76,6 +80,30 @@ func GetCPUInfo() error {
 	GetCpuUsage()
 
 	return nil
+}
+
+// StartCPUMonitor continuously monitors CPU usage
+func StartCPUMonitor(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	fmt.Println("Starting CPU monitor...")
+	for {
+		select {
+		case <-ticker.C:
+			percent, err := cpu.Percent(time.Second, false) // Use a short interval for measurement
+			if err != nil {
+				fmt.Printf("Error getting CPU usage: %v\n", err)
+				continue
+			}
+			if len(percent) > 0 {
+				fmt.Printf("[Live CPU Usage]: %.2f%%\n", percent[0])
+			}
+		case <-ctx.Done():
+			fmt.Println("Stopping CPU monitor.")
+			return // Exit goroutine
+		}
+	}
 }
 
 /* <---------------- MEMORY INFO -----------------> */
@@ -97,16 +125,37 @@ func GetMemInfo() error {
 	return nil
 }
 
+// GetMemUsage is kept for one-time snapshot
 func GetMemUsage() error {
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return err
 	}
 	memPercent := memInfo.UsedPercent
-
-	fmt.Printf("  Usage: %.2f%%\n\n", memPercent)
-
+	fmt.Printf("  Usage (snapshot): %.2f%%\n\n", memPercent)
 	return nil
+}
+
+// StartMemoryMonitor continuously monitors memory usage
+func StartMemoryMonitor(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	fmt.Println("Starting Memory monitor...")
+	for {
+		select {
+		case <-ticker.C:
+			memInfo, err := mem.VirtualMemory()
+			if err != nil {
+				fmt.Printf("Error getting Memory usage: %v\n", err)
+				continue
+			}
+			fmt.Printf("[Live Memory Usage]: %.2f%%\n", memInfo.UsedPercent)
+		case <-ctx.Done():
+			fmt.Println("Stopping Memory monitor.")
+			return // Exit goroutine
+		}
+	}
 }
 
 /* <---------------- NETWORK INFO -----------------> */
