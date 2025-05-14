@@ -11,6 +11,19 @@ import (
 	"github.com/shirou/gopsutil/v3/net"
 )
 
+type MemInfoData struct {
+	TotalGB      float64 `json:"total_gb"`
+	UsedGB       float64 `json:"used_gb"`
+	FreeGB       float64 `json:"free_gb"` // From memoryInfo.Available
+	UsagePercent float64 `json:"usage_percent"`
+}
+
+type NetworkData struct {
+	UploadMB   float64 `json:"upload_mb_period"`   // MB over the measurement period
+	DownloadMB float64 `json:"download_mb_period"` // MB over the measurement period
+	// Consider adding rates: UploadBytesPerSec, DownloadBytesPerSec
+}
+
 // Converts bytes to gigabytes
 func BytesToGB(bytes uint64) float64 {
 	return float64(bytes) / (1024 * 1024 * 1024)
@@ -22,64 +35,74 @@ func BytesToMB(bytes uint64) float64 {
 }
 
 /* <---------------- SYSTEM INFO -----------------> */
-func GetSystemInfo() error {
 
-	info, err := host.Info()
+type SystemInfoData struct {
+	Hostname      string `json:"hostname"`
+	HostID        string `json:"host_id"`
+	OS            string `json:"os"`
+	OSVersion     string `json:"os_version"`
+	Kernel        string `json:"kernel"`
+	KernelVersion string `json:"kernel_version"`
+	Uptime        string `json:"uptime"`
+}
+
+func GetSystemInfo() (SystemInfoData, error) {
+	var data SystemInfoData
+
+	SystemInfo, err := host.Info()
 	if err != nil {
-		return err
+		return data, fmt.Errorf("error getting System info: %w", err)
 	}
-	// info.HostID
-	hostname := info.Hostname
-	hostID := info.HostID
-	// os := info.Platform // Geri açılcak
-	os := "Sequoia" // silincek
-	osVersion := info.PlatformVersion
-	kernel := info.KernelArch
-	kernelVersion := info.KernelVersion
 
-	uptime := time.Duration(info.Uptime) * time.Second
+	data.Hostname = SystemInfo.Hostname
+	data.HostID = SystemInfo.HostID
+	data.OS = SystemInfo.OS
+
+	data.OSVersion = SystemInfo.PlatformVersion
+	data.Kernel = SystemInfo.KernelArch
+	data.KernelVersion = SystemInfo.KernelVersion
+
+	uptime := time.Duration(SystemInfo.Uptime) * time.Second
 	uptime = uptime.Round(time.Second)
+	data.Uptime = uptime.String()
 
-	fmt.Println("System Information:")
-	fmt.Printf("  Hostname: %s\n", hostname)
-	fmt.Printf("  HostID: %s\n", hostID)
-	fmt.Printf("  OS: %s %s\n", os, osVersion)
-	fmt.Printf("  Kernel: %s %s\n", kernel, kernelVersion)
-	fmt.Printf("  Uptime: %s\n\n", uptime)
-
-	return nil
+	return data, nil
 }
 
 /* <---------------- CPU INFO -----------------> */
 
-// GetCpuUsage is kept for one-time snapshot
-func GetCpuUsage() error {
-	percent, err := cpu.Percent(time.Second, false)
-	if err != nil {
-		return err
-	}
-	if len(percent) > 0 {
-		fmt.Printf("  Total CPU Usage (snapshot): %.2f%%\n\n", percent[0])
-	} else {
-		fmt.Printf("  Could not get CPU usage snapshot.\n")
-	}
-	return nil
+type CPUInfoData struct {
+	ModelName string  `json:"model_name"`
+	Cores     int32   `json:"cores"`
+	Usage     float64 `json:"usage_percent"` // Combined from GetCpuUsage
 }
 
-func GetCPUInfo() error {
-	cpuInfo, err := cpu.Info()
+func GetCPUInfo() (CPUInfoData, error) {
+
+	var data CPUInfoData
+
+	cpuInfos, err := cpu.Info()
 	if err != nil {
-		return err
+		return data, fmt.Errorf("error getting CPU info: %w", err)
 	}
-	modelName := cpuInfo[0].ModelName
-	cpuCores := cpuInfo[0].Cores
+	if len(cpuInfos) > 0 {
+		data.ModelName = cpuInfos[0].ModelName
+		data.Cores = cpuInfos[0].Cores // This is physical cores * sockets * threads per core usually. Or logical processors.
+	} else {
+		return data, fmt.Errorf("no CPU info found")
+	}
 
-	fmt.Printf("CPU Info\n")
-	fmt.Printf("  CPU Model: %s\n", modelName)
-	fmt.Printf("  CPU Cores: %d\n", cpuCores) //8 performance (P) + 2 efficiency (E) cores
-	GetCpuUsage()
-
-	return nil
+	// Get CPU Usage
+	percent, err := cpu.Percent(time.Second, false) // false -> overall percentage
+	if err != nil {
+		return data, fmt.Errorf("error getting CPU usage %w", err)
+	}
+	if len(percent) > 0 {
+		data.Usage = percent[0]
+	} else {
+		return data, fmt.Errorf("could not retrieve CPU usage percentage")
+	}
+	return data, nil
 }
 
 // StartCPUMonitor continuously monitors CPU usage
@@ -97,7 +120,7 @@ func StartCPUMonitor(ctx context.Context, interval time.Duration) {
 				continue
 			}
 			if len(percent) > 0 {
-				fmt.Printf("[Live CPU Usage]: %.2f%%\n", percent[0])
+				fmt.Printf("[Live CPU Usage]: %.2f%%\n", percent[0]) // direkt bunu return ederek veriyi elde ederiz
 			}
 		case <-ctx.Done():
 			fmt.Println("Stopping CPU monitor.")
@@ -150,7 +173,7 @@ func StartMemoryMonitor(ctx context.Context, interval time.Duration) {
 				fmt.Printf("Error getting Memory usage: %v\n", err)
 				continue
 			}
-			fmt.Printf("[Live Memory Usage]: %.2f%%\n", memInfo.UsedPercent)
+			fmt.Printf("[Live Memory Usage]: %.2f%%\n", memInfo.UsedPercent) // direkt bunu return ederek veriyi elde ederiz
 		case <-ctx.Done():
 			fmt.Println("Stopping Memory monitor.")
 			return // Exit goroutine
