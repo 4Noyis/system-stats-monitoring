@@ -21,6 +21,14 @@ func main() {
 	} else {
 		fmt.Println(sysInf)
 	}
+
+	memInf, err := stats.GetMemInfo()
+	if err != nil {
+		return
+	} else {
+		fmt.Println(memInf)
+	}
+
 	// fmt.Println("Starting System Statistics Monitor...")
 
 	// // --- Static Information (runs once) ---

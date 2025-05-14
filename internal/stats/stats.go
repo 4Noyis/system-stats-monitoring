@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/shirou/gopsutil/host"
@@ -10,13 +11,6 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/net"
 )
-
-type MemInfoData struct {
-	TotalGB      float64 `json:"total_gb"`
-	UsedGB       float64 `json:"used_gb"`
-	FreeGB       float64 `json:"free_gb"` // From memoryInfo.Available
-	UsagePercent float64 `json:"usage_percent"`
-}
 
 type NetworkData struct {
 	UploadMB   float64 `json:"upload_mb_period"`   // MB over the measurement period
@@ -98,7 +92,8 @@ func GetCPUInfo() (CPUInfoData, error) {
 		return data, fmt.Errorf("error getting CPU usage %w", err)
 	}
 	if len(percent) > 0 {
-		data.Usage = percent[0]
+		usage := math.Round(percent[0]*100) / 100
+		data.Usage = usage
 	} else {
 		return data, fmt.Errorf("could not retrieve CPU usage percentage")
 	}
@@ -131,32 +126,32 @@ func StartCPUMonitor(ctx context.Context, interval time.Duration) {
 
 /* <---------------- MEMORY INFO -----------------> */
 
-func GetMemInfo() error {
-	memoryInfo, err := mem.VirtualMemory()
-	if err != nil {
-		return err
-	}
-	memoryTotal := BytesToGB(memoryInfo.Total)
-	memoryUsed := BytesToGB(memoryInfo.Used)
-	memoryFree := BytesToGB(memoryInfo.Available)
-
-	fmt.Printf("Memory Info\n")
-	fmt.Printf("  Total: %.2f GB\n", memoryTotal)
-	fmt.Printf("  Used: %.2f GB\n", memoryUsed)
-	fmt.Printf("  Free: %.2f GB\n", memoryFree)
-	GetMemUsage()
-	return nil
+type MemInfoData struct {
+	TotalGB      float64 `json:"total_gb"`
+	FreeGB       float64 `json:"free_gb"` // From memoryInfo.Available
+	UsagePercent float64 `json:"usage_percent"`
 }
 
-// GetMemUsage is kept for one-time snapshot
-func GetMemUsage() error {
-	memInfo, err := mem.VirtualMemory()
+func GetMemInfo() (MemInfoData, error) {
+	var data MemInfoData
+
+	memoryInfo, err := mem.VirtualMemory()
 	if err != nil {
-		return err
+		return data, fmt.Errorf("error getting Memory info: %w", err)
 	}
-	memPercent := memInfo.UsedPercent
-	fmt.Printf("  Usage (snapshot): %.2f%%\n\n", memPercent)
-	return nil
+	if memoryInfo != nil {
+		data.TotalGB = BytesToGB(memoryInfo.Total)
+		data.FreeGB = BytesToGB(memoryInfo.Available)
+	} else {
+		return data, fmt.Errorf("no Memory info found")
+	}
+
+	// Get memory usage Percent
+	memoryPercent := math.Round(memoryInfo.UsedPercent*100) / 100
+	data.UsagePercent = memoryPercent
+
+	return data, nil
+
 }
 
 // StartMemoryMonitor continuously monitors memory usage
