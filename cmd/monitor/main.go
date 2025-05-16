@@ -1,89 +1,154 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/4Noyis/system-stats-monitoring/internal/stats"
+	"github.com/shirou/gopsutil/v3/net"
+)
+
+type AllHostStats struct {
+	CollectedAt time.Time             `json:"collected_at"`
+	System      stats.SystemInfoData  `json:"system_info"`
+	CPU         stats.CPUInfoData     `json:"cpu_info"`
+	Memory      stats.MemInfoData     `json:"memory_info"`
+	Network     stats.NetworkData     `json:"network_info"`
+	Processes   []stats.ProcessData   `json:"processes,omitempty"`
+	Disks       []stats.DiskUsageData `json:"disk_usage,omitempty"`
+}
+
+var (
+	previousNetCounters       net.IOCountersStat
+	previousNetCollectionTime time.Time
+	networkStatsInitialized   bool
+)
+
+const (
+	serverURL            = "http://localhost:8080/api/stats" // Replace with your actual server URL
+	collectionInterval   = 5 * time.Second
+	maxProcessesToReport = 2 // Limit the number of processes reported, 0 for all
 )
 
 func main() {
+	fmt.Printf("Starting System Statistics Monitor Client (PID: %d)...\n", os.Getpid())
 
-	cpuInf, err := stats.GetCPUInfo()
+	// Initialize network stats baseline
+	var err error
+	previousNetCounters, err = stats.GetCurrentIOCounters()
 	if err != nil {
-		return
-	} else {
-		fmt.Println(cpuInf)
+		log.Fatalf("Error getting initial network counters: %v. Exiting.", err)
+	}
+	previousNetCollectionTime = time.Now()
+	networkStatsInitialized = true
+
+	// ---- Setup for periodic collection and sending -----
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle shutdown signals for graceful exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		fmt.Printf("\nReceived signal: %s. Shutting down...\n", sig)
+		cancel() // signal all goroutines to stop
+	}()
+
+	ticker := time.NewTicker(collectionInterval)
+	defer ticker.Stop()
+
+	fmt.Printf("Collecting and sending stats to %s every %s.\n", serverURL, collectionInterval)
+
+	fmt.Println("Press Ctrl+C to stop.")
+
+	// Initial collection and send, then tick
+	collectAndSendStats(ctx)
+
+	for {
+		select {
+		case <-ticker.C:
+			if ctx.Err() == nil { // Only collect if context is not already cancelled
+				collectAndSendStats(ctx)
+			}
+		case <-ctx.Done():
+			log.Println("Collector stopped due to context cancellation.")
+			// Allow a brief moment for any final logging or cleanup if necessary
+			time.Sleep(200 * time.Millisecond)
+			fmt.Println("Client exited.")
+			return
+		}
+	}
+}
+
+func collectAndSendStats(ctx context.Context) {
+	log.Println("Collecting stats...")
+
+	var hostStats AllHostStats
+	hostStats.CollectedAt = time.Now().UTC()
+
+	var err error
+	hostStats.System, err = stats.GetSystemInfo()
+	if err != nil {
+		log.Printf("Error getting system info: %v", err)
 	}
 
-	sysInf, err := stats.GetSystemInfo()
+	hostStats.CPU, err = stats.GetCPUInfo()
 	if err != nil {
-		return
-	} else {
-		fmt.Println(sysInf)
+		log.Printf("Error getting CPU info: %v", err)
 	}
 
-	memInf, err := stats.GetMemInfo()
+	hostStats.Memory, err = stats.GetMemInfo()
 	if err != nil {
-		return
-	} else {
-		fmt.Println(memInf)
+		log.Printf("Error getting memory info: %v", err)
 	}
 
-	// fmt.Println("Starting System Statistics Monitor...")
+	// Network
+	currentNetCounters, err := stats.GetCurrentIOCounters()
+	if err != nil {
+		log.Printf("Error getting current network counters: %v", err)
+	} else {
+		currentTime := time.Now()
+		if networkStatsInitialized {
+			duration := currentTime.Sub(previousNetCollectionTime)
+			hostStats.Network, err = stats.CalculateNetworkRates(currentNetCounters, previousNetCounters, duration)
+			if err != nil {
 
-	// // --- Static Information (runs once) ---
-	// err := stats.GetSystemInfo()
-	// if err != nil {
-	// 	fmt.Printf("Error getting system info: %v\n", err)
-	// }
+				log.Printf("Error calculating network rates: %v", err)
+				// Set to a default or empty struct if calculation fails
+				hostStats.Network = stats.NetworkData{InterfaceName: "all"}
 
-	// err = stats.GetCPUInfo() // This will print static CPU info and a CPU usage snapshot
-	// if err != nil {
-	// 	fmt.Printf("Error getting CPU info: %v\n", err)
-	// }
+			}
 
-	// err = stats.GetMemInfo() // This will print static Mem info and a Mem usage snapshot
-	// if err != nil {
-	// 	fmt.Printf("Error getting memory info: %v\n", err)
-	// }
+		}
+		// Update for next iteration
+		previousNetCounters = currentNetCounters
+		previousNetCollectionTime = currentTime
+	}
 
-	// // --- Network Info (runs once, blocks for 5s during its measurement) ---
-	// // You can run this before or after starting monitors, or also in a goroutine if needed.
-	// // err = stats.GetDownloadInfo()
-	// // if err != nil {
-	// // 	fmt.Printf("Error getting download info: %v\n", err)
-	// // }
+	// process List
+	hostStats.Processes, err = stats.GetProcessList(maxProcessesToReport)
+	if err != nil {
+		log.Printf("Error getting process list %v", err)
+	}
 
-	// // <------ Setup for continuous monitoring ----->
-	// // Create a context that can be canceled
-	// ctx, cancel := context.WithCancel(context.Background())
-	// defer cancel() // Ensure cancel is called when main exits, to clean up goroutines
+	// disk
+	hostStats.Disks, err = stats.GetDiskUsageInfo()
+	if err != nil {
+		log.Printf("Error getting disk usage info: %v", err)
+	}
 
-	// // Define the update interval
-	// updateInterval := 5 * time.Second
-
-	// // Start CPU monitor in a new goroutine
-	// go stats.StartCPUMonitor(ctx, updateInterval)
-
-	// // Start Memory monitor in a new goroutine
-	// go stats.StartMemoryMonitor(ctx, updateInterval)
-
-	// fmt.Println("\nCPU and Memory usage will update every 5 seconds.")
-	// fmt.Println("Press Ctrl+C to stop.")
-
-	// // <----- Keep the main program running and wait for a shutdown signal ---> Gonna change later. Just form termianl testing!!!!
-	// sigChan := make(chan os.Signal, 1)
-	// // Notify sigChan on Interrupt (Ctrl+C) or Terminate signals
-	// signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// // Block until a signal is received
-	// <-sigChan
-
-	// fmt.Println("\nShutdown signal received. Stopping monitors...")
-	// cancel() // Signal the goroutines to stop by canceling the context
-
-	// // Give goroutines a moment to print their "Stopping..." message and exit cleanly
-	// time.Sleep(1 * time.Second)
-	// fmt.Println("Exited.")
-
+	jsonData, err := json.MarshalIndent(hostStats, "", "  ")
+	if err != nil {
+		log.Printf("Error marshaling stats to JSON: %v", err)
+		return
+	}
+	fmt.Print(string(jsonData))
 }

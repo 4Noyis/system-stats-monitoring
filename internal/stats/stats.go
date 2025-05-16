@@ -8,14 +8,58 @@ import (
 
 	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/process"
 	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/net"
 )
 
+type SystemInfoData struct {
+	Hostname      string `json:"hostname"`
+	HostID        string `json:"host_id"`
+	OS            string `json:"os"`
+	OSVersion     string `json:"os_version"`
+	Kernel        string `json:"kernel"`
+	KernelVersion string `json:"kernel_version"`
+	Uptime        string `json:"uptime"`
+}
+
+type CPUInfoData struct {
+	ModelName string  `json:"model_name"`
+	Cores     int32   `json:"cores"`
+	Usage     float64 `json:"usage_percent"` // Combined from GetCpuUsage
+}
+
+type MemInfoData struct {
+	TotalGB      float64 `json:"total_gb"`
+	FreeGB       float64 `json:"free_gb"` // From memoryInfo.Available
+	UsagePercent float64 `json:"usage_percent"`
+}
+
 type NetworkData struct {
-	UploadMB   float64 `json:"upload_mb_period"`   // MB over the measurement period
-	DownloadMB float64 `json:"download_mb_period"` // MB over the measurement period
-	// Consider adding rates: UploadBytesPerSec, DownloadBytesPerSec
+	InterfaceName       string  `json:"interface_name,omitempty"` // "all" for aggregate
+	BytesSentPeriod     uint64  `json:"bytes_sent_period"`
+	BytesRecvPeriod     uint64  `json:"bytes_recv_period"`
+	PacketsSentPeriod   uint64  `json:"packets_sent_period"`
+	PacketsRecvPeriod   uint64  `json:"packets_recv_period"`
+	UploadBytesPerSec   float64 `json:"upload_bytes_per_sec"`
+	DownloadBytesPerSec float64 `json:"download_bytes_per_sec"`
+}
+type ProcessData struct {
+	PID           int32   `json:"pid"`
+	Name          string  `json:"name"`
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryPercent float32 `json:"memory_percent"`
+	Username      string  `json:"username"`
+	// Add more fields as needed, e.g., status, command line
+}
+
+type DiskUsageData struct {
+	Path         string  `json:"path"`
+	TotalGB      float64 `json:"total_gb"`
+	UsedGB       float64 `json:"used_gb"`
+	FreeGB       float64 `json:"free_gb"`
+	UsagePercent float64 `json:"usage_percent"`
 }
 
 // Converts bytes to gigabytes
@@ -29,16 +73,6 @@ func BytesToMB(bytes uint64) float64 {
 }
 
 /* <---------------- SYSTEM INFO -----------------> */
-
-type SystemInfoData struct {
-	Hostname      string `json:"hostname"`
-	HostID        string `json:"host_id"`
-	OS            string `json:"os"`
-	OSVersion     string `json:"os_version"`
-	Kernel        string `json:"kernel"`
-	KernelVersion string `json:"kernel_version"`
-	Uptime        string `json:"uptime"`
-}
 
 func GetSystemInfo() (SystemInfoData, error) {
 	var data SystemInfoData
@@ -64,12 +98,6 @@ func GetSystemInfo() (SystemInfoData, error) {
 }
 
 /* <---------------- CPU INFO -----------------> */
-
-type CPUInfoData struct {
-	ModelName string  `json:"model_name"`
-	Cores     int32   `json:"cores"`
-	Usage     float64 `json:"usage_percent"` // Combined from GetCpuUsage
-}
 
 func GetCPUInfo() (CPUInfoData, error) {
 
@@ -126,12 +154,6 @@ func StartCPUMonitor(ctx context.Context, interval time.Duration) {
 
 /* <---------------- MEMORY INFO -----------------> */
 
-type MemInfoData struct {
-	TotalGB      float64 `json:"total_gb"`
-	FreeGB       float64 `json:"free_gb"` // From memoryInfo.Available
-	UsagePercent float64 `json:"usage_percent"`
-}
-
 func GetMemInfo() (MemInfoData, error) {
 	var data MemInfoData
 
@@ -178,31 +200,95 @@ func StartMemoryMonitor(ctx context.Context, interval time.Duration) {
 
 /* <---------------- NETWORK INFO -----------------> */
 
-func GetDownloadInfo() error {
-	// Get initial network stats
-	initial, err := net.IOCounters(false)
+func GetCurrentIOCounters() (net.IOCountersStat, error) {
+	ioCounters, err := net.IOCounters(false) // false for aggregate (sum of all interfaces)
 	if err != nil {
-		panic(err)
+		return net.IOCountersStat{}, fmt.Errorf("failed to get I/O counters: %w", err)
+	}
+	if len(ioCounters) == 0 {
+		return net.IOCountersStat{}, fmt.Errorf("no I/O counters returned")
+	}
+	return ioCounters[0], nil // Return the first (and only) element for aggregate stats
+}
+
+func CalculateNetworkRates(current, previous net.IOCountersStat, duration time.Duration) (NetworkData, error) {
+	var data NetworkData
+	data.InterfaceName = "all"
+
+	if duration.Seconds() <= 0 {
+		return data, fmt.Errorf("duration must be positive, got %v", duration)
 	}
 
-	// Wait for some time (e.g., 5 seconds)
-	fmt.Println("Measuring network usage for 5 seconds...")
-	time.Sleep(5 * time.Second)
+	data.BytesSentPeriod = current.BytesSent - previous.BytesSent
+	data.BytesRecvPeriod = current.BytesRecv - previous.BytesRecv
+	data.PacketsSentPeriod = current.PacketsSent - previous.PacketsSent
+	data.PacketsRecvPeriod = current.PacketsRecv - previous.PacketsRecv
 
-	// Get stats again
-	final, err := net.IOCounters(false)
+	// Calculate rates per second
+	durationSeconds := duration.Seconds()
+	data.UploadBytesPerSec = float64(data.BytesSentPeriod) / durationSeconds
+	data.DownloadBytesPerSec = float64(data.BytesRecvPeriod) / durationSeconds
+
+	return data, nil
+}
+
+/* <----------------  PROCESSES INFO -----------------> */
+func GetProcessList(count int) ([]ProcessData, error) {
+	pids, err := process.Pids()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	if len(initial) > 0 && len(final) > 0 {
-		sent := final[0].BytesSent - initial[0].BytesSent
-		recv := final[0].BytesRecv - initial[0].BytesRecv
+	var processes []ProcessData
 
-		fmt.Printf("Network Info \n")
-		fmt.Printf("  Upload:   %.2f MB\n", BytesToMB(sent))
-		fmt.Printf("  Download: %.2f MB\n", BytesToMB(recv))
+	for _, pid := range pids {
+		proc, err := process.NewProcess(pid)
+		if err != nil {
+			continue
+		}
+		name, _ := proc.Name()
+		cpuPercent, _ := proc.CPUPercent()
+		memPercent, _ := proc.MemoryPercent()
+		username, _ := proc.Username()
+
+		processes = append(processes, ProcessData{
+			PID:           pid,
+			Name:          name,
+			CPUPercent:    cpuPercent,
+			MemoryPercent: memPercent,
+			Username:      username,
+		})
+
+		if count > 0 && len(processes) >= count {
+
+		}
+	}
+	return processes, nil
+}
+
+/* <----------------  DISK INFO -----------------> */
+func GetDiskUsageInfo() ([]DiskUsageData, error) {
+	// partitions, err := disk.Partitions(false) // false for physical devices only
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	var usages []DiskUsageData
+
+	usage, err := disk.Usage("/")
+	if err != nil {
+		fmt.Printf("Could not get usage: %v\n", err)
+
 	}
 
-	return nil
+	usages = append(usages, DiskUsageData{
+		Path:         usage.Path,
+		TotalGB:      BytesToGB(usage.Total),
+		UsedGB:       BytesToGB(usage.Used),
+		FreeGB:       BytesToGB(usage.Free),
+		UsagePercent: usage.UsedPercent,
+	})
+
+	return usages, nil
+
 }
