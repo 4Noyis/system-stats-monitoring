@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/4Noyis/system-stats-monitoring/internal/stats"
+	"github.com/4Noyis/system-stats-monitoring/pkg/exporter"
 	"github.com/shirou/gopsutil/v3/net"
 )
 
@@ -33,7 +33,7 @@ var (
 const (
 	serverURL            = "http://localhost:8080/api/stats" // Replace with your actual server URL
 	collectionInterval   = 5 * time.Second
-	maxProcessesToReport = 2 // Limit the number of processes reported, 0 for all
+	maxProcessesToReport = 10 // Limit the number of processes reported, 0 for all
 )
 
 func main() {
@@ -145,10 +145,14 @@ func collectAndSendStats(ctx context.Context) {
 		log.Printf("Error getting disk usage info: %v", err)
 	}
 
-	jsonData, err := json.MarshalIndent(hostStats, "", "  ")
+	// <-------- SEND THE DATA -------->
+	err = exporter.SendStatsJSON(ctx, serverURL, hostStats) // Pass the populated hostStats struct
 	if err != nil {
-		log.Printf("Error marshaling stats to JSON: %v", err)
-		return
+
+		log.Printf("Failed to send stats: %v", err)
+	} else {
+		log.Println("Stats dispatch initiated successfully.")
+		fmt.Println("-----------------------------------------------------")
 	}
-	fmt.Print(string(jsonData))
+
 }
