@@ -31,9 +31,9 @@ var (
 )
 
 const (
-	serverURL            = "http://localhost:8080/api/stats" // Replace with your actual server URL
-	collectionInterval   = 5 * time.Second
-	maxProcessesToReport = 10 // Limit the number of processes reported, 0 for all
+	serverURL                = "http://localhost:8080/api/stats" // Replace with your actual server URL
+	collectionInterval       = 5 * time.Second
+	maxProcessesUsagePercent = 10.0 // Limit the usage percent for procesess memory & CPU
 )
 
 func main() {
@@ -134,7 +134,7 @@ func collectAndSendStats(ctx context.Context) {
 	}
 
 	// process List
-	hostStats.Processes, err = stats.GetProcessList(maxProcessesToReport)
+	hostStats.Processes, err = stats.GetProcessList(maxProcessesUsagePercent)
 	if err != nil {
 		log.Printf("Error getting process list %v", err)
 	}

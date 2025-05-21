@@ -1,22 +1,140 @@
-[
-  {
-    "timestamp": "2025-05-10T01:23:20+03:00",
-    "usage": 21.43698468591706
+{
+  "collected_at": "2025-05-17T23:03:24.832666Z",
+  "cpu_info": {
+    "cores": 8,
+    "model_name": "Apple M1 Pro",
+    "usage_percent": 13.82
   },
-  {
-    "timestamp": "2025-05-10T01:23:23+03:00",
-    "usage": 23.99497487343115
+  "disk_usage": [
+    {
+      "free_gb": 75.87205123901367,
+      "path": "/",
+      "total_gb": 460.4317207336426,
+      "usage_percent": 83.5215412356645,
+      "used_gb": 384.5596694946289
+    }
+  ],
+  "memory_info": {
+    "free_gb": 4.2117919921875,
+    "total_gb": 16,
+    "usage_percent": 73.68
   },
-  {
-    "timestamp": "2025-05-10T01:23:26+03:00",
-    "usage": 18.2728410508692
+  "network_info": {
+    "bytes_recv_period": 52712,
+    "bytes_sent_period": 49651,
+    "download_bytes_per_sec": 7609.927821577134,
+    "interface_name": "all",
+    "packets_recv_period": 112,
+    "packets_sent_period": 113,
+    "upload_bytes_per_sec": 7168.017268726785
   },
-  {
-    "timestamp": "2025-05-10T01:23:29+03:00",
-    "usage": 19.573400251138963
-  },
-  {
-    "timestamp": "2025-05-10T01:23:32+03:00",
-    "usage": 37.6411543288647
+  "processes": [
+    {
+      "cpu_percent": 8.250040219241667,
+      "memory_percent": 0.8486748,
+      "name": "WindowServer",
+      "pid": 386,
+      "username": "root"
+    },
+    {
+      "cpu_percent": 2.974066184178134,
+      "memory_percent": 0.29382706,
+      "name": "coreaudiod",
+      "pid": 404,
+      "username": "_coreaudiod"
+    },
+    {
+      "cpu_percent": 14.840129785021272,
+      "memory_percent": 0.52251816,
+      "name": "mds_stores",
+      "pid": 551,
+      "username": "root"
+    },
+    {
+      "cpu_percent": 2.084649367873913,
+      "memory_percent": 0.21438599,
+      "name": "corespeechd",
+      "pid": 728,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 0.2682165010652744,
+      "memory_percent": 2.393818,
+      "name": "Spotify Helper (Renderer)",
+      "pid": 850,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 22.35326423999116,
+      "memory_percent": 0.25491714,
+      "name": "mediaanalysisd",
+      "pid": 986,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 4.233219282846008,
+      "memory_percent": 0.022602081,
+      "name": "mediaanalysisd-access",
+      "pid": 3969,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 3.587519647968387,
+      "memory_percent": 0.60129166,
+      "name": "Activity Monitor",
+      "pid": 24061,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 5.274084121524916,
+      "memory_percent": 2.1679878,
+      "name": "Browser Helper (Renderer)",
+      "pid": 33076,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 0.34373592521240237,
+      "memory_percent": 2.1943092,
+      "name": "Code Helper (Renderer)",
+      "pid": 36730,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 2.858394047980068,
+      "memory_percent": 1.2782574,
+      "name": "BlueMail Helper (Renderer)",
+      "pid": 69322,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 3.5753560720178514,
+      "memory_percent": 4.4210434,
+      "name": "Arc",
+      "pid": 95206,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 2.6064651716038414,
+      "memory_percent": 0.95596313,
+      "name": "Browser Helper (GPU)",
+      "pid": 95231,
+      "username": "berenalp"
+    },
+    {
+      "cpu_percent": 19.28531905773855,
+      "memory_percent": 0.09431839,
+      "name": "main",
+      "pid": 97125,
+      "username": "berenalp"
+    }
+  ],
+  "system_info": {
+    "host_id": "-",
+    "hostname": "Berenalps-MacBook-Pro.local",
+    "kernel": "arm64",
+    "kernel_version": "24.4.0",
+    "os": "darwin",
+    "os_version": "15.4.1",
+    "uptime": "157h10m25s"
   }
-]
+}

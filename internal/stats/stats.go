@@ -233,7 +233,7 @@ func CalculateNetworkRates(current, previous net.IOCountersStat, duration time.D
 }
 
 /* <----------------  PROCESSES INFO -----------------> */
-func GetProcessList(count int) ([]ProcessData, error) {
+func GetProcessList(count float64) ([]ProcessData, error) {
 	pids, err := process.Pids()
 	if err != nil {
 		return nil, err
@@ -246,22 +246,27 @@ func GetProcessList(count int) ([]ProcessData, error) {
 		if err != nil {
 			continue
 		}
-		name, _ := proc.Name()
 		cpuPercent, _ := proc.CPUPercent()
 		memPercent, _ := proc.MemoryPercent()
-		username, _ := proc.Username()
 
-		processes = append(processes, ProcessData{
-			PID:           pid,
-			Name:          name,
-			CPUPercent:    cpuPercent,
-			MemoryPercent: memPercent,
-			Username:      username,
-		})
+		if cpuPercent > count || memPercent > float32(count) {
+			name, _ := proc.Name()
+			username, _ := proc.Username()
 
-		if count > 0 && len(processes) >= count {
+			processes = append(processes, ProcessData{
+				PID:           pid,
+				Name:          name,
+				CPUPercent:    cpuPercent,
+				MemoryPercent: memPercent,
+				Username:      username,
+			})
 
 		}
+
+		// for limited number process
+		// if count > 0 && len(processes) >= count {
+
+		// }
 	}
 	return processes, nil
 }
