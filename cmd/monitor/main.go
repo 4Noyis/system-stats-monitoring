@@ -3,25 +3,25 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/4Noyis/system-stats-monitoring/internal/stats"
+	appLogger "github.com/4Noyis/system-stats-monitoring/internal/logger"
+	clientStats "github.com/4Noyis/system-stats-monitoring/internal/stats"
 	"github.com/4Noyis/system-stats-monitoring/pkg/exporter"
 	"github.com/shirou/gopsutil/v3/net"
 )
 
 type AllHostStats struct {
-	CollectedAt time.Time             `json:"collected_at"`
-	System      stats.SystemInfoData  `json:"system_info"`
-	CPU         stats.CPUInfoData     `json:"cpu_info"`
-	Memory      stats.MemInfoData     `json:"memory_info"`
-	Network     stats.NetworkData     `json:"network_info"`
-	Processes   []stats.ProcessData   `json:"processes,omitempty"`
-	Disks       []stats.DiskUsageData `json:"disk_usage,omitempty"`
+	CollectedAt time.Time                   `json:"collected_at"`
+	System      clientStats.SystemInfoData  `json:"system_info"`
+	CPU         clientStats.CPUInfoData     `json:"cpu_info"`
+	Memory      clientStats.MemInfoData     `json:"memory_info"`
+	Network     clientStats.NetworkData     `json:"network_info"`
+	Processes   []clientStats.ProcessData   `json:"processes,omitempty"`
+	Disks       []clientStats.DiskUsageData `json:"disk_usage,omitempty"`
 }
 
 var (
@@ -41,9 +41,9 @@ func main() {
 
 	// Initialize network stats baseline
 	var err error
-	previousNetCounters, err = stats.GetCurrentIOCounters()
+	previousNetCounters, err = clientStats.GetCurrentIOCounters()
 	if err != nil {
-		log.Fatalf("Error getting initial network counters: %v. Exiting.", err)
+		appLogger.Fatal("Error getting initial network counters: %v. Exiting.", err)
 	}
 	previousNetCollectionTime = time.Now()
 	networkStatsInitialized = true
@@ -59,13 +59,14 @@ func main() {
 	go func() {
 		sig := <-sigChan
 		fmt.Printf("\nReceived signal: %s. Shutting down...\n", sig)
+		appLogger.Info("Shutdown signal received (%s), cancelling context.", sig)
 		cancel() // signal all goroutines to stop
 	}()
 
 	ticker := time.NewTicker(collectionInterval)
 	defer ticker.Stop()
 
-	fmt.Printf("Collecting and sending stats to %s every %s.\n", serverURL, collectionInterval)
+	appLogger.Info("Collecting and sending stats to %s every %s.", serverURL, collectionInterval)
 
 	fmt.Println("Press Ctrl+C to stop.")
 
@@ -79,7 +80,7 @@ func main() {
 				collectAndSendStats(ctx)
 			}
 		case <-ctx.Done():
-			log.Println("Collector stopped due to context cancellation.")
+			appLogger.Info("Collector stopped due to context cancellation.")
 			// Allow a brief moment for any final logging or cleanup if necessary
 			time.Sleep(200 * time.Millisecond)
 			fmt.Println("Client exited.")
@@ -89,41 +90,41 @@ func main() {
 }
 
 func collectAndSendStats(ctx context.Context) {
-	log.Println("Collecting stats...")
+	appLogger.Info("Collecting stats...")
 
 	var hostStats AllHostStats
 	hostStats.CollectedAt = time.Now().UTC()
 
 	var err error
-	hostStats.System, err = stats.GetSystemInfo()
+	hostStats.System, err = clientStats.GetSystemInfo()
 	if err != nil {
-		log.Printf("Error getting system info: %v", err)
+		appLogger.Error("Error getting system info: %v", err)
 	}
 
-	hostStats.CPU, err = stats.GetCPUInfo()
+	hostStats.CPU, err = clientStats.GetCPUInfo()
 	if err != nil {
-		log.Printf("Error getting CPU info: %v", err)
+		appLogger.Error("Error getting CPU info: %v", err)
 	}
 
-	hostStats.Memory, err = stats.GetMemInfo()
+	hostStats.Memory, err = clientStats.GetMemInfo()
 	if err != nil {
-		log.Printf("Error getting memory info: %v", err)
+		appLogger.Error("Error getting memory info: %v", err)
 	}
 
 	// Network
-	currentNetCounters, err := stats.GetCurrentIOCounters()
+	currentNetCounters, err := clientStats.GetCurrentIOCounters()
 	if err != nil {
-		log.Printf("Error getting current network counters: %v", err)
+		appLogger.Error("Error getting current network counters: %v", err)
 	} else {
 		currentTime := time.Now()
 		if networkStatsInitialized {
 			duration := currentTime.Sub(previousNetCollectionTime)
-			hostStats.Network, err = stats.CalculateNetworkRates(currentNetCounters, previousNetCounters, duration)
+			hostStats.Network, err = clientStats.CalculateNetworkRates(currentNetCounters, previousNetCounters, duration)
 			if err != nil {
 
-				log.Printf("Error calculating network rates: %v", err)
+				appLogger.Error("Error calculating network rates: %v", err)
 				// Set to a default or empty struct if calculation fails
-				hostStats.Network = stats.NetworkData{InterfaceName: "all"}
+				hostStats.Network = clientStats.NetworkData{InterfaceName: "all"}
 
 			}
 
@@ -134,24 +135,24 @@ func collectAndSendStats(ctx context.Context) {
 	}
 
 	// process List
-	hostStats.Processes, err = stats.GetProcessList(maxProcessesUsagePercent)
+	hostStats.Processes, err = clientStats.GetProcessList(maxProcessesUsagePercent)
 	if err != nil {
-		log.Printf("Error getting process list %v", err)
+		appLogger.Error("Error getting process list: %v", err)
 	}
 
 	// disk
-	hostStats.Disks, err = stats.GetDiskUsageInfo()
+	hostStats.Disks, err = clientStats.GetDiskUsageInfo()
 	if err != nil {
-		log.Printf("Error getting disk usage info: %v", err)
+		appLogger.Error("Error getting disk usage %v", err)
 	}
 
 	// <-------- SEND THE DATA -------->
 	err = exporter.SendStatsJSON(ctx, serverURL, hostStats) // Pass the populated hostStats struct
 	if err != nil {
 
-		log.Printf("Failed to send stats: %v", err)
+		appLogger.Error("Failed to send stats: %v", err)
 	} else {
-		log.Println("Stats dispatch initiated successfully.")
+		appLogger.Info("Stats dispatch initiated successfully by exporter.")
 		fmt.Println("-----------------------------------------------------")
 	}
 

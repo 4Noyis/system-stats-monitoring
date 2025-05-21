@@ -1,54 +1,87 @@
 package logger
 
 import (
-	"encoding/json"
-	"encoding/xml"
 	"fmt"
+	"log"
 	"os"
-	"time"
-
-	"github.com/shirou/gopsutil/v3/cpu"
+	"runtime"
+	"strings"
 )
 
-type CPUStat struct {
-	Timestamp string  `json:"timestamp" xml:"timestamp"`
-	Usage     float64 `json:"usage" xml:"usage"`
+var (
+	infoLog  *log.Logger
+	warnLog  *log.Logger
+	errorLog *log.Logger
+	debugLog *log.Logger
+
+	debugEnabled = false // set ture for enable debug logging
+)
+
+// initializes the loggers. Automatically called when the package is imported
+func init() {
+	// Common flags for all loggers
+	// Ldate: date YYYY/MM/DD
+	// Ltime: time HH:MM:SS
+	// Lmicroseconds: include microseconds
+	baseFlags := log.Ldate | log.Ltime | log.Lmicroseconds
+
+	infoLog = log.New(os.Stdout, "INFO: ", baseFlags)
+	warnLog = log.New(os.Stdout, "WARN: ", baseFlags) // os.Stdout for warnings
+	errorLog = log.New(os.Stderr, "ERROR: ", baseFlags)
+	debugLog = log.New(os.Stdout, "DEBUG: ", baseFlags)
 }
 
-func LogCPUStats(interval time.Duration, count int, format string, filename string) error {
-	var logs []CPUStat
-
-	for i := 0; i < count; i++ {
-		percent, err := cpu.Percent(time.Second, false)
-		if err != nil {
-			return err
-		}
-
-		log := CPUStat{
-			Timestamp: time.Now().Format(time.RFC3339),
-			Usage:     percent[0],
-		}
-		logs = append(logs, log)
-
-		fmt.Printf("[%s] CPU: %.2f%%\n", log.Timestamp, log.Usage)
-		time.Sleep(interval)
+// return file and line number of the caller
+func getCallerInfo(skip int) string {
+	_, file, line, ok := runtime.Caller(skip)
+	if !ok {
+		return ""
 	}
+	// get just file name
+	parts := strings.Split(file, "/")
+	fileName := parts[len(parts)-1]
 
-	var data []byte
-	var err error
+	return fmt.Sprintf("%s:%d", fileName, line)
+}
 
-	switch format {
-	case "json":
-		data, err = json.MarshalIndent(logs, "", "  ")
-	case "xml":
-		data, err = xml.MarshalIndent(logs, "", "  ")
-	default:
-		return fmt.Errorf("unsupported format: %s", format)
+// Info Logs
+func Info(format string, v ...interface{}) {
+	caller := getCallerInfo(2)
+	message := fmt.Sprintf(format, v...)
+	infoLog.Printf("%s: %s", caller, message)
+}
+
+// Warning Logs
+func Warn(format string, v ...interface{}) {
+	caller := getCallerInfo(2)
+	message := fmt.Sprintf(format, v...)
+	warnLog.Printf("%s: %s", caller, message)
+}
+
+// Error logs
+func Error(format string, v ...interface{}) {
+	caller := getCallerInfo(2)
+	message := fmt.Sprintf(format, v...)
+	errorLog.Printf("%s: %s", caller, message)
+}
+
+// If debug enabled
+func Debug(format string, v ...interface{}) {
+	if debugEnabled {
+		caller := getCallerInfo(2)
+		message := fmt.Sprintf(format, v...)
+		debugLog.Printf("%s: %s", caller, message)
 	}
+}
 
-	if err != nil {
-		return err
-	}
+// Fatal Logs calls os.Exit(1)
+func Fatal(format string, v ...interface{}) {
+	caller := getCallerInfo(2)
+	message := fmt.Sprintf(format, v...)
+	errorLog.Printf("%s: %s", caller, message)
+	os.Exit(1)
+}
 
-	return os.WriteFile(filename, data, 0644)
+func SetDebug(enable bool) {
+	debugEnabled = enable
 }
