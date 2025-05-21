@@ -1,19 +1,26 @@
 # system-stats-monitoring
 
+```
 system-stats-monitoring/
-├── cmd/                      # Main application entrypoints
-│   └── monitor/              # You can have multiple commands
-│       └── main.go           # Entry point
-├── internal/                 # Application-specific internal logic
-│   ├── stats/                # e.g. CPU, memory, disk stats logic
-│   │   └── stats.go
-│   └── logger/               # Custom logging package
-│       └── logger.go
-├── pkg/                      # Exportable packages for other apps
-│   └── exporter/             # JSON/XML exporters
-│       └── exporter.go
+├── cmd/
+│   ├── monitor/              # Client
+│   │   └── main.go
+│   └── server/               # Server application
+│       └── main.go           # Server entry point
+├── internal/
+│   ├── stats/                # Client stats collection logic
+│   ├── logger/               # Shared logger 
+│   └── server/               # Server-specific internal logic
+│       ├── api/              # API handlers 
+│       ├── config/           # Server configuration 
+│       ├── database/         # Database interaction logic 
+│       └── models/           # Data models for server-side
+├── pkg/
+│   └── exporter/             # Client exporter
 ├── go.mod
+├── go.sum
 └── README.md
+```
 
 This structure is for my system monitoring project. Its basically gets:
 - System info: Host ID & Host name, Operating system, Kernel, Uptime.
