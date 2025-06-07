@@ -55,10 +55,8 @@ func (w *InfluxDBWriter) WriteStats(ctx context.Context, payload *models.ClientP
 
 	// --- Create common tags for all points from this payload ---
 	tags := map[string]string{
-		"host_id":     payload.System.HostID,
-		"hostname":    payload.System.Hostname,
-		"os":          payload.System.OS,
-		"kernel_arch": payload.System.KernelVersion,
+		"host_id":  payload.System.HostID,
+		"hostname": payload.System.Hostname,
 	}
 
 	// --- Create point for general system, CPU, and Memory stats ---

@@ -43,8 +43,8 @@ func main() {
 	defer dbWriter.Close() // ensure client is closed on exit
 	appLogger.Info("InfluxDB writer initialized.")
 
-	// ------- Initialize Gin engine ------------
-	if !cfg.EnableDebugLog { // Or use a specific GIN_MODE env var
+	// ------- Initialize Gin ------------
+	if !cfg.EnableDebugLog {
 		gin.SetMode(gin.ReleaseMode)
 		appLogger.Info("Gin set to ReleaseMode.")
 	} else {
@@ -67,7 +67,7 @@ func main() {
 	srv := &http.Server{
 		Addr:    cfg.ListenAddress,
 		Handler: router,
-		// Good practice: enforce timeouts to prevent slowloris attacks.
+
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,

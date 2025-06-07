@@ -15,13 +15,13 @@ import (
 )
 
 type SystemInfoData struct {
-	Hostname      string `json:"hostname"`
-	HostID        string `json:"host_id"`
-	OS            string `json:"os"`
-	OSVersion     string `json:"os_version"`
-	Kernel        string `json:"kernel"`
-	KernelVersion string `json:"kernel_version"`
-	Uptime        string `json:"uptime"`
+	Hostname      string  `json:"hostname"`
+	HostID        string  `json:"host_id"`
+	OS            string  `json:"os"`
+	OSVersion     string  `json:"os_version"`
+	Kernel        string  `json:"kernel"`
+	KernelVersion string  `json:"kernel_version"`
+	Uptime        float64 `json:"uptime"`
 }
 
 type CPUInfoData struct {
@@ -92,7 +92,7 @@ func GetSystemInfo() (SystemInfoData, error) {
 
 	uptime := time.Duration(SystemInfo.Uptime) * time.Second
 	uptime = uptime.Round(time.Second)
-	data.Uptime = uptime.String()
+	data.Uptime = float64(uptime)
 
 	return data, nil
 }

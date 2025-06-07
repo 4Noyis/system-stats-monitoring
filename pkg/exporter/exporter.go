@@ -36,7 +36,6 @@ func SendStatsJSON(ctx context.Context, serverURL string, data interface{}) erro
 		return fmt.Errorf("error creating HTTP request to %s: %w", serverURL, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// TODO: Add any other necessary headers, like authentication tokens or HostID
 
 	// 4. Execute the HTTP request
 	httpClient := &http.Client{} // default client

@@ -31,7 +31,7 @@ var (
 )
 
 const (
-	serverURL                = "http://localhost:8080/api/stats" // Replace with your actual server URL
+	serverURL                = "http://localhost:8080/api/stats"
 	collectionInterval       = 5 * time.Second
 	maxProcessesUsagePercent = 10.0 // Limit the usage percent for procesess memory & CPU
 )
@@ -63,6 +63,7 @@ func main() {
 		cancel() // signal all goroutines to stop
 	}()
 
+	// signalleri dinlemek için goroutine ile paralel bir işlem başlatılır.
 	ticker := time.NewTicker(collectionInterval)
 	defer ticker.Stop()
 
@@ -93,6 +94,7 @@ func collectAndSendStats(ctx context.Context) {
 	appLogger.Info("Collecting stats...")
 
 	var hostStats AllHostStats
+
 	hostStats.CollectedAt = time.Now().UTC()
 
 	var err error
