@@ -8,3 +8,6 @@ vendor/
 # IDEs
 .vscode/
 .idea/
+
+
+internal/server/config/config.go
