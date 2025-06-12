@@ -12,6 +12,7 @@ import (
 
 	appLogger "github.com/4Noyis/system-stats-monitoring/internal/logger"
 	"github.com/4Noyis/system-stats-monitoring/internal/server/api"
+	apiHandlers "github.com/4Noyis/system-stats-monitoring/internal/server/api"
 	"github.com/4Noyis/system-stats-monitoring/internal/server/config"
 	"github.com/4Noyis/system-stats-monitoring/internal/server/database"
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,13 @@ func main() {
 	defer dbWriter.Close() // ensure client is closed on exit
 	appLogger.Info("InfluxDB writer initialized.")
 
+	dbReader, err := database.NewInfluxDBReader(cfg.InfluxDB) // <-- INITIALIZE READER
+	if err != nil {
+		appLogger.Fatal("Failed to initialize InfluxDB reader: %v", err)
+	}
+	defer dbReader.Close() // Ensure client is closed on exit
+	appLogger.Info("InfluxDB reader initialized.")
+
 	// ------- Initialize Gin ------------
 	if !cfg.EnableDebugLog {
 		gin.SetMode(gin.ReleaseMode)
@@ -61,6 +69,9 @@ func main() {
 	// ------ Setup API Handlers and Routes -------
 	statsAPIHandler := api.NewStatsHandler(dbWriter)
 	statsAPIHandler.RegisterRoutes(router)
+
+	dashboardAPIHandler := apiHandlers.NewDashboardHandler(dbReader) // <-- NEW DASHBOARD HANDLER
+	dashboardAPIHandler.RegisterDashboardRoutes(router)              // <-- REGISTER DASHBOARD ROUTES
 	appLogger.Info("API routes registered.")
 
 	// ------- Start http Server --------
