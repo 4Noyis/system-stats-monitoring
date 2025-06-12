@@ -188,8 +188,8 @@ func (r *InfluxDBReader) GetHostDetails(ctx context.Context, hostID string) (*mo
             net_upload_bytes_sec: if exists r.net_upload_bytes_sec then r.net_upload_bytes_sec else 0.0,
             os: if exists r.os then r.os else "",
             os_version: if exists r.os_version then r.os_version else "",
+			kernel: if exists r.kernel then r.kernel else "",
             kernel_arch: if exists r.kernel_arch then r.kernel_arch else "",
-            kernel_version: if exists r.kernel_version then r.kernel_version else ""
             // uptime_seconds: if exists r.uptime_seconds then uint(v: r.uptime_seconds) else uint(v: 0) // if you re-add it
         })) // <<<< THIS IS THE END OF THE map() call.
            // There is no findRecord after this.
@@ -263,7 +263,7 @@ func (r *InfluxDBReader) GetHostDetails(ctx context.Context, hostID string) (*mo
 		OS: models.OSLiteralDetails{
 			Name:       getS("os"), // Assuming 'os' field in system_metrics stores this
 			Version:    getS("os_version"),
-			Kernel:     getS("kernel_version"),
+			Kernel:     getS("kernel"),
 			KernelArch: getS("kernel_arch"),
 		},
 		CPUUsage:        getF("cpu_usage_percent"),
@@ -283,8 +283,8 @@ func (r *InfluxDBReader) GetHostDetails(ctx context.Context, hostID string) (*mo
         )
         |> last()
         |> pivot(rowKey:["_time", "host_id", "path"], columnKey: ["_field"], valueColumn: "_value")
-        // REMOVED findRecord from here
-`, r.bucket, defaultLookbackWindow, hostID)
+
+	`, r.bucket, defaultLookbackWindow, hostID)
 
 	appLogger.Debug("GetHostDetails Disk Query for host %s:\n%s", hostID, diskQuery)
 	diskResults, err := r.queryAPI.Query(ctx, diskQuery)
@@ -318,6 +318,73 @@ func (r *InfluxDBReader) GetHostDetails(ctx context.Context, hostID string) (*mo
 			appLogger.Error("Error processing root disk results for host %s: %v", hostID, diskResults.Err())
 			// Disk details might be partially populated or default
 		}
+	}
+
+	// --- Query for Process Metrics ---
+	processQuery := fmt.Sprintf(`
+	from(bucket: "%s")
+	|> range(start: -%s)
+	|> filter(fn: (r) =>
+		r._measurement == "process_metrics" and 
+		r.host_id == "%s" and
+		(r._field == "cpu_percent" or r._field == "mem_percent")
+	)
+	
+	|> group(columns: ["host_id", "pid", "name"])
+	|> last()
+	|> pivot(rowKey:["_time", "host_id", "pid", "name"], columnKey: ["_field"], valueColumn: "_value")
+`, r.bucket, defaultLookbackWindow, hostID)
+
+	appLogger.Debug("GetHostDetails Process Query for host %s:\n%s", hostID, processQuery)
+
+	procResults, procErr := r.queryAPI.Query(ctx, processQuery)
+	if procErr != nil {
+		appLogger.Error("InfluxDB query failed for GetHostDetails (processes) for host %s: %v", hostID, procErr)
+		// Continue without process details or return error based on desired behavior
+	} else {
+		var processes []models.ProcessDetail
+		for procResults.Next() {
+			pRec := procResults.Record()
+
+			// Helper to get float from process record
+			getPF := func(key string) float64 {
+				v, ok := pRec.ValueByKey(key).(float64)
+				if !ok {
+					return 0.0
+				}
+				return v
+			}
+			// Helper to get string from process record
+			// getPS := func(key string) string {
+			// 	v, ok := pRec.ValueByKey(key).(string)
+			// 	if !ok {
+			// 		return ""
+			// 	}
+			// 	return v
+			// }
+			// Helper to get int32 from process record (PID is a tag, so it's already a string)
+			// PID tag is string, convert to int32
+			pidStr, _ := pRec.ValueByKey("pid").(string)
+			var pidVal int32
+			_, scanErr := fmt.Sscan(pidStr, &pidVal) // Simple string to int32 conversion
+			if scanErr != nil {
+				appLogger.Warn("Could not parse PID '%s' to int32 for host %s: %v", pidStr, hostID, scanErr)
+				// continue // Skip this process if PID is not parsable
+			}
+
+			procDetail := models.ProcessDetail{
+				PID:           pidVal,
+				Name:          pRec.ValueByKey("name").(string), // 'name' is a tag
+				CPUPercent:    getPF("cpu_percent"),             // 'cpu_percent' is a field
+				MemoryPercent: float32(getPF("mem_percent")),    // 'mem_percent' is a field
+				// Username:      getPS("user"),                    // 'user' is a field
+			}
+			processes = append(processes, procDetail)
+		}
+		if procResults.Err() != nil {
+			appLogger.Error("Error processing process results for host %s: %v", hostID, procResults.Err())
+		}
+		details.Processes = processes // Assign the collected processes
 	}
 
 	// Determine status

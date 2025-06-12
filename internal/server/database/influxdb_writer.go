@@ -64,6 +64,10 @@ func (w *InfluxDBWriter) WriteStats(ctx context.Context, payload *models.ClientP
 
 	fields := map[string]interface{}{
 		"uptime_seconds":         payload.System.Uptime,
+		"os":                     payload.System.OS,
+		"os_version":             payload.System.OSVersion,
+		"kernel":                 payload.System.Kernel,
+		"kernel_arch":            payload.System.KernelVersion,
 		"cpu_model_name":         payload.CPU.ModelName, // String field
 		"cpu_cores":              payload.CPU.Cores,
 		"cpu_usage_percent":      payload.CPU.Usage,
