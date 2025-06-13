@@ -9,5 +9,4 @@ vendor/
 .vscode/
 .idea/
 
-
-internal/server/config/config.go
+./internal/server/config/config.go
