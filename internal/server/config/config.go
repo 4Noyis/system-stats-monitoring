@@ -33,9 +33,9 @@ func Load() (*ServerConfig, error) {
 
 		InfluxDB: InfluxDBConfig{
 			URL:    getEnv("INFLUXDB_URL", "http://localhost:8086"),
-			Token:  getEnv("INFLUXDB_TOKEN", "API-KEY"),      // Add API Key
-			Org:    getEnv("INFLUXDB_ORG", "ORG-NAME"),       // Add organization name                                                                                   //
-			Bucket: getEnv("INFLUXDB_BUCKET", "BUCKET-NAME"), // Add bucket                                                                            //
+			Token:  getEnv("INFLUXDB_TOKEN", "API-KEY"),       // Add API Key
+			Org:    getEnv("INFLUXDB_ORG", "ORG-NAME"),        // Add organization name                                                                                   //
+			Bucket: getEnv("INFLUXDB_BUCKET", "system_stats"), // Add bucket                                                                            //
 		},
 		EnableDebugLog: getEnvAsBool("SERVER_ENABLE_DEBUG_LOG", false),
 	}
