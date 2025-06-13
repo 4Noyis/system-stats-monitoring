@@ -263,10 +263,6 @@ func GetProcessList(count float64) ([]ProcessData, error) {
 
 		}
 
-		// for limited number process
-		// if count > 0 && len(processes) >= count {
-
-		// }
 	}
 	return processes, nil
 }
