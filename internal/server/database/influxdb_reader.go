@@ -321,71 +321,124 @@ func (r *InfluxDBReader) GetHostDetails(ctx context.Context, hostID string) (*mo
 	}
 
 	// --- Query for Process Metrics ---
-	processQuery := fmt.Sprintf(`
-	from(bucket: "%s")
-	|> range(start: -%s)
-	|> filter(fn: (r) =>
-		r._measurement == "process_metrics" and 
-		r.host_id == "%s" and
-		(r._field == "cpu_percent" or r._field == "mem_percent")
-	)
-	
-	|> group(columns: ["host_id", "pid", "name"])
-	|> last()
-	|> pivot(rowKey:["_time", "host_id", "pid", "name"], columnKey: ["_field"], valueColumn: "_value")
-`, r.bucket, defaultLookbackWindow, hostID)
+	// --- Query for Process Metrics (Username field excluded for testing) ---
+	processMap := make(map[string]*models.ProcessDetail) // Pointer to modify in place
 
-	appLogger.Debug("GetHostDetails Process Query for host %s:\n%s", hostID, processQuery)
+	// Query 1: Get mem_percent and base process info (pid, name)
+	processQuery_mem_and_tags := fmt.Sprintf(`
+		targetFields = ["mem_percent"] 
+		from(bucket: "%s")
+			|> range(start: -%s)
+			|> filter(fn: (r) => r._measurement == "process_metrics" and r.host_id == "%s" and contains(value: r._field, set: targetFields))
+			|> group(columns: ["host_id", "pid", "name"]) 
+			|> last() 
+			|> pivot(rowKey:["_time", "host_id", "pid", "name"], columnKey: ["_field"], valueColumn: "_value")
+	`, r.bucket, defaultLookbackWindow, hostID)
 
-	procResults, procErr := r.queryAPI.Query(ctx, processQuery)
-	if procErr != nil {
-		appLogger.Error("InfluxDB query failed for GetHostDetails (processes) for host %s: %v", hostID, procErr)
-		// Continue without process details or return error based on desired behavior
+	appLogger.Debug("GetHostDetails Process Query (Mem & Tags) for host %s:\n%s", hostID, processQuery_mem_and_tags)
+	memResults, memErr := r.queryAPI.Query(ctx, processQuery_mem_and_tags)
+	if memErr != nil {
+		appLogger.Error("InfluxDB query failed for GetHostDetails (processes mem_and_tags) for host %s: %v", hostID, memErr)
 	} else {
-		var processes []models.ProcessDetail
-		for procResults.Next() {
-			pRec := procResults.Record()
-
-			// Helper to get float from process record
-			getPF := func(key string) float64 {
-				v, ok := pRec.ValueByKey(key).(float64)
+		for memResults.Next() {
+			pRec := memResults.Record()
+			getPF := func(key string) float64 { /* ... same as before ... */
+				val, ok := pRec.ValueByKey(key).(float64)
 				if !ok {
+					appLogger.Warn("[MemQuery] Field '%s' expected float64, got %T for process PID '%s', Name '%s'", key, pRec.ValueByKey(key), pRec.ValueByKey("pid"), pRec.ValueByKey("name"))
 					return 0.0
 				}
-				return v
-			}
-			// Helper to get string from process record
-			// getPS := func(key string) string {
-			// 	v, ok := pRec.ValueByKey(key).(string)
-			// 	if !ok {
-			// 		return ""
-			// 	}
-			// 	return v
-			// }
-			// Helper to get int32 from process record (PID is a tag, so it's already a string)
-			// PID tag is string, convert to int32
-			pidStr, _ := pRec.ValueByKey("pid").(string)
-			var pidVal int32
-			_, scanErr := fmt.Sscan(pidStr, &pidVal) // Simple string to int32 conversion
-			if scanErr != nil {
-				appLogger.Warn("Could not parse PID '%s' to int32 for host %s: %v", pidStr, hostID, scanErr)
-				// continue // Skip this process if PID is not parsable
+				return val
 			}
 
-			procDetail := models.ProcessDetail{
-				PID:           pidVal,
-				Name:          pRec.ValueByKey("name").(string), // 'name' is a tag
-				CPUPercent:    getPF("cpu_percent"),             // 'cpu_percent' is a field
-				MemoryPercent: float32(getPF("mem_percent")),    // 'mem_percent' is a field
-				// Username:      getPS("user"),                    // 'user' is a field
+			pidStr, _ := pRec.ValueByKey("pid").(string)
+			nameStr, _ := pRec.ValueByKey("name").(string)
+			var pidVal int32
+			_, scanErr := fmt.Sscan(pidStr, &pidVal)
+			if scanErr != nil { /* ... log error ... */
 			}
-			processes = append(processes, procDetail)
+
+			processKey := fmt.Sprintf("%s_%s", pidStr, nameStr) // Unique key for the map
+			procDetail := &models.ProcessDetail{
+				PID:           pidVal,
+				Name:          nameStr,
+				MemoryPercent: float32(getPF("mem_percent")),
+				CPUPercent:    0, // Default, will be updated by CPU query
+				// Username: "", // If you bring it back
+			}
+			processMap[processKey] = procDetail
 		}
-		if procResults.Err() != nil {
-			appLogger.Error("Error processing process results for host %s: %v", hostID, procResults.Err())
+		if memResults.Err() != nil {
+			appLogger.Error("Error processing process mem_and_tags results for host %s: %v", hostID, memResults.Err())
 		}
-		details.Processes = processes // Assign the collected processes
 	}
+
+	// Query 2: Get cpu_percent
+	processQuery_cpu := fmt.Sprintf(`
+		targetFields = ["cpu_percent"]
+		from(bucket: "%s")
+			|> range(start: -%s)
+			|> filter(fn: (r) => r._measurement == "process_metrics" and r.host_id == "%s" and contains(value: r._field, set: targetFields))
+			|> group(columns: ["host_id", "pid", "name"])
+			|> last()
+			|> pivot(rowKey:["_time", "host_id", "pid", "name"], columnKey: ["_field"], valueColumn: "_value")
+	`, r.bucket, defaultLookbackWindow, hostID)
+
+	appLogger.Debug("GetHostDetails Process Query (CPU) for host %s:\n%s", hostID, processQuery_cpu)
+	cpuResults, cpuErr := r.queryAPI.Query(ctx, processQuery_cpu)
+	if cpuErr != nil {
+		appLogger.Error("InfluxDB query failed for GetHostDetails (processes cpu) for host %s: %v", hostID, cpuErr)
+	} else {
+		for cpuResults.Next() {
+			pRec := cpuResults.Record()
+			getPF := func(key string) float64 { /* ... same as before ... */
+				val, ok := pRec.ValueByKey(key).(float64)
+				if !ok {
+					appLogger.Warn("[CPUQuery] Field '%s' expected float64, got %T for process PID '%s', Name '%s'", key, pRec.ValueByKey(key), pRec.ValueByKey("pid"), pRec.ValueByKey("name"))
+					return 0.0
+				}
+				return val
+			}
+
+			pidStr, _ := pRec.ValueByKey("pid").(string)
+			nameStr, _ := pRec.ValueByKey("name").(string)
+
+			processKey := fmt.Sprintf("%s_%s", pidStr, nameStr)
+			if procDetail, exists := processMap[processKey]; exists {
+				procDetail.CPUPercent = getPF("cpu_percent")
+			} else {
+				// This case means a process had CPU usage but no memory usage reported in the first query
+				// or there's a timing mismatch. You might want to create a new entry or log it.
+				appLogger.Warn("Found CPU data for process PID '%s', Name '%s' but no prior mem data. Creating new entry.", pidStr, nameStr)
+				var pidVal int32 // Need to parse pidStr again if creating new
+				_, scanErr := fmt.Sscan(pidStr, &pidVal)
+				if scanErr != nil { /* ... log error ... */
+				}
+
+				newProcDetail := &models.ProcessDetail{
+					PID:           pidVal,
+					Name:          nameStr,
+					CPUPercent:    getPF("cpu_percent"),
+					MemoryPercent: 0, // No memory data from first query
+				}
+				processMap[processKey] = newProcDetail
+			}
+		}
+		if cpuResults.Err() != nil {
+			appLogger.Error("Error processing process cpu results for host %s: %v", hostID, cpuResults.Err())
+		}
+	}
+
+	// Convert map to slice for the final details struct
+	var finalProcesses []models.ProcessDetail
+	for _, procDetail := range processMap {
+		finalProcesses = append(finalProcesses, *procDetail)
+	}
+	// Optionally sort finalProcesses, e.g., by PID or Name
+	sort.Slice(finalProcesses, func(i, j int) bool {
+		return finalProcesses[i].PID < finalProcesses[j].PID
+	})
+	details.Processes = finalProcesses
 
 	// Determine status
 	if time.Since(details.LastSeen) <= activeHostLookback+(5*time.Second) {
