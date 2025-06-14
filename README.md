@@ -2,21 +2,32 @@
 
 ```
 system-stats-monitoring/
-├── cmd/
-│   ├── monitor/              # Client
-│   │   └── main.go
-│   └── server/               # Server application
-│       └── main.go           # Server entry point
-├── internal/
-│   ├── stats/                # Client stats collection logic
-│   ├── logger/               # Shared logger 
-│   └── server/               # Server-specific internal logic
-│       ├── api/              # API handlers 
-│       ├── config/           # Server configuration 
-│       ├── database/         # Database interaction logic 
-│       └── models/           # Data models for server-side
-├── pkg/
-│   └── exporter/             # Client exporter
+├── cmd
+│   ├── monitor
+│   │   └── main.go
+│   └── server
+│       └── main.go
+├── internal
+│   ├── logger
+│   │   └── logger.go
+│   ├── server
+│   │   ├── api
+│   │   │   ├── dashboard_handler.go
+│   │   │   └── stats_handler.go
+│   │   ├── config
+│   │   │   └── config.go
+│   │   ├── database
+│   │   │   ├── influxdb_reader.go
+│   │   │   └── influxdb_writer.go
+│   │   └── models
+│   │       ├── dashboard_models.go
+│   │       └── payload.go
+│   └── stats
+│       └── stats.go
+├── pkg
+│   └── exporter
+│       └── exporter.go
+├── cpu_log.json
 ├── go.mod
 ├── go.sum
 └── README.md

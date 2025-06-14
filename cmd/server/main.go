@@ -11,10 +11,11 @@ import (
 	"time"
 
 	appLogger "github.com/4Noyis/system-stats-monitoring/internal/logger"
-	"github.com/4Noyis/system-stats-monitoring/internal/server/api"
 	apiHandlers "github.com/4Noyis/system-stats-monitoring/internal/server/api"
 	"github.com/4Noyis/system-stats-monitoring/internal/server/config"
 	"github.com/4Noyis/system-stats-monitoring/internal/server/database"
+
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -63,16 +64,29 @@ func main() {
 	router := gin.New() // Using gin.New() for more control over middleware
 
 	// Middleware
-	router.Use(ginLoggerMiddleware()) // Recover from any panics and return a 500
-	appLogger.Info("Gin engine initialized.")
+	// Apply CORS middleware FIRST or early in the middleware chain
+	// This is a common permissive configuration for development
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowOrigins = []string{"http://localhost:5173"} // Your Vite frontend origin
+	// You can also use "*" to allow all origins for quick testing, but be specific for production
+	// corsConfig.AllowOrigins = []string{"*"}
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	// corsConfig.AllowCredentials = true // If you need to send cookies or use auth headers that require this
+
+	router.Use(cors.New(corsConfig)) // <--- USE THE CORS MIDDLEWARE WITH YOUR CONFIG
+
+	router.Use(gin.Recovery())        // Recover from any panics and return a 500
+	router.Use(ginLoggerMiddleware()) // Your custom logger middleware
+	appLogger.Info("Gin engine initialized with CORS, Recovery, and Logger middleware.")
 
 	// ------ Setup API Handlers and Routes -------
-	statsAPIHandler := api.NewStatsHandler(dbWriter)
+	statsAPIHandler := apiHandlers.NewStatsHandler(dbWriter)
 	statsAPIHandler.RegisterRoutes(router)
 
-	dashboardAPIHandler := apiHandlers.NewDashboardHandler(dbReader) // <-- NEW DASHBOARD HANDLER
-	dashboardAPIHandler.RegisterDashboardRoutes(router)              // <-- REGISTER DASHBOARD ROUTES
-	appLogger.Info("API routes registered.")
+	dashboardAPIHandler := apiHandlers.NewDashboardHandler(dbReader)
+	dashboardAPIHandler.RegisterDashboardRoutes(router)
+	appLogger.Info("API and Dashboard routes registered.")
 
 	// ------- Start http Server --------
 	srv := &http.Server{
