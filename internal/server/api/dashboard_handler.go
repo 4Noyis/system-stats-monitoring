@@ -119,6 +119,6 @@ func (h *DashboardHandler) RegisterDashboardRoutes(router *gin.Engine) {
 		dashboardGroup.GET("/hosts/overview", h.GetHostsOverview)
 		dashboardGroup.GET("/host/:hostID/details", h.GetHostDetailsByID)
 		dashboardGroup.GET("/host/:hostID/metrics/:metricName", h.GetHostMetricHistory)
-		// Add more routes as needed (e.g., for logs, specific process data if implemented)
+
 	}
 }

@@ -28,13 +28,10 @@ func (h *StatsHandler) PostStats(c *gin.Context) {
 	// 1. Bind JSON payload to the struct
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		appLogger.Error("Failed to bind JSON payload: %v. Client IP: %s", err, c.ClientIP())
-		// You could inspect the raw body here for debugging if needed
-		// rawBody, _ := c.GetRawData()
-		// appLogger.Debug("Raw problematic payload: %s", string(rawBody))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload", "details": err.Error()})
 		return
 	}
-	// 2. Basic validation (example: ensure HostID is present)
+	// 2. Basic validation (ensure HostID is present)
 	if payload.System.HostID == "" {
 		appLogger.Warn("Received payload with empty HostID from %s. Payload Hostname: %s", c.ClientIP(), payload.System.Hostname)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "HostID is missing in system_info"})
@@ -70,6 +67,5 @@ func (h *StatsHandler) RegisterRoutes(router *gin.Engine) {
 	apiGroup := router.Group("/api")
 	{
 		apiGroup.POST("/stats", h.PostStats)
-		// You can add more routes here later, e.g., GET /api/stats/host/:hostid
 	}
 }
