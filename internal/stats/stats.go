@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"time"
@@ -128,30 +127,6 @@ func GetCPUInfo() (CPUInfoData, error) {
 	return data, nil
 }
 
-// StartCPUMonitor continuously monitors CPU usage
-func StartCPUMonitor(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	fmt.Println("Starting CPU monitor...")
-	for {
-		select {
-		case <-ticker.C:
-			percent, err := cpu.Percent(time.Second, false) // Use a short interval for measurement
-			if err != nil {
-				fmt.Printf("Error getting CPU usage: %v\n", err)
-				continue
-			}
-			if len(percent) > 0 {
-				fmt.Printf("[Live CPU Usage]: %.2f%%\n", percent[0]) // direkt bunu return ederek veriyi elde ederiz
-			}
-		case <-ctx.Done():
-			fmt.Println("Stopping CPU monitor.")
-			return // Exit goroutine
-		}
-	}
-}
-
 /* <---------------- MEMORY INFO -----------------> */
 
 func GetMemInfo() (MemInfoData, error) {
@@ -176,28 +151,6 @@ func GetMemInfo() (MemInfoData, error) {
 
 }
 
-// StartMemoryMonitor continuously monitors memory usage
-func StartMemoryMonitor(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	fmt.Println("Starting Memory monitor...")
-	for {
-		select {
-		case <-ticker.C:
-			memInfo, err := mem.VirtualMemory()
-			if err != nil {
-				fmt.Printf("Error getting Memory usage: %v\n", err)
-				continue
-			}
-			fmt.Printf("[Live Memory Usage]: %.2f%%\n", memInfo.UsedPercent) // direkt bunu return ederek veriyi elde ederiz
-		case <-ctx.Done():
-			fmt.Println("Stopping Memory monitor.")
-			return // Exit goroutine
-		}
-	}
-}
-
 /* <---------------- NETWORK INFO -----------------> */
 
 func GetCurrentIOCounters() (net.IOCountersStat, error) {
@@ -219,10 +172,32 @@ func CalculateNetworkRates(current, previous net.IOCountersStat, duration time.D
 		return data, fmt.Errorf("duration must be positive, got %v", duration)
 	}
 
-	data.BytesSentPeriod = current.BytesSent - previous.BytesSent
-	data.BytesRecvPeriod = current.BytesRecv - previous.BytesRecv
-	data.PacketsSentPeriod = current.PacketsSent - previous.PacketsSent
-	data.PacketsRecvPeriod = current.PacketsRecv - previous.PacketsRecv
+	// Handle counter resets/overflows by checking if current < previous
+	if current.BytesSent < previous.BytesSent {
+		// Counter reset detected, use current values as the period
+		data.BytesSentPeriod = current.BytesSent
+	} else {
+		data.BytesSentPeriod = current.BytesSent - previous.BytesSent
+	}
+
+	if current.BytesRecv < previous.BytesRecv {
+		// Counter reset detected, use current values as the period
+		data.BytesRecvPeriod = current.BytesRecv
+	} else {
+		data.BytesRecvPeriod = current.BytesRecv - previous.BytesRecv
+	}
+
+	if current.PacketsSent < previous.PacketsSent {
+		data.PacketsSentPeriod = current.PacketsSent
+	} else {
+		data.PacketsSentPeriod = current.PacketsSent - previous.PacketsSent
+	}
+
+	if current.PacketsRecv < previous.PacketsRecv {
+		data.PacketsRecvPeriod = current.PacketsRecv
+	} else {
+		data.PacketsRecvPeriod = current.PacketsRecv - previous.PacketsRecv
+	}
 
 	// Calculate rates per second
 	durationSeconds := duration.Seconds()
@@ -246,12 +221,26 @@ func GetProcessList(count float64) ([]ProcessData, error) {
 		if err != nil {
 			continue
 		}
-		cpuPercent, _ := proc.CPUPercent()
-		memPercent, _ := proc.MemoryPercent()
+		cpuPercent, err := proc.CPUPercent()
+		if err != nil {
+			continue // Skip process if CPU percent cannot be retrieved
+		}
+
+		memPercent, err := proc.MemoryPercent()
+		if err != nil {
+			continue // Skip process if memory percent cannot be retrieved
+		}
 
 		if cpuPercent > count || memPercent > float32(count) {
-			name, _ := proc.Name()
-			username, _ := proc.Username()
+			name, err := proc.Name()
+			if err != nil {
+				name = "unknown" // Use fallback name if retrieval fails
+			}
+
+			username, err := proc.Username()
+			if err != nil {
+				username = "unknown" // Use fallback username if retrieval fails
+			}
 
 			processes = append(processes, ProcessData{
 				PID:           pid,
@@ -278,8 +267,7 @@ func GetDiskUsageInfo() ([]DiskUsageData, error) {
 
 	usage, err := disk.Usage("/")
 	if err != nil {
-		fmt.Printf("Could not get usage: %v\n", err)
-
+		return nil, fmt.Errorf("failed to get disk usage for '/': %w", err)
 	}
 
 	usages = append(usages, DiskUsageData{
