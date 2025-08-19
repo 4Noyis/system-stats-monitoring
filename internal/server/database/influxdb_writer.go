@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	appLogger "github.com/4Noyis/system-stats-monitoring/internal/logger"
@@ -72,7 +73,7 @@ func (w *InfluxDBWriter) WriteStats(ctx context.Context, payload *models.ClientP
 		"cpu_cores":              payload.CPU.Cores,
 		"cpu_usage_percent":      payload.CPU.Usage,
 		"mem_total_gb":           payload.Memory.TotalGB,
-		"mem_used_gb":            payload.Memory.UsagePercent,
+		"mem_used_gb":            payload.Memory.TotalGB - payload.Memory.FreeGB,
 		"mem_available_gb":       payload.Memory.FreeGB,
 		"mem_usage_percent":      payload.Memory.UsagePercent,
 		"net_bytes_sent_period":  payload.Network.BytesSentPeriod, // Assuming aggregate network stats
@@ -127,7 +128,7 @@ func (w *InfluxDBWriter) WriteStats(ctx context.Context, payload *models.ClientP
 		for k, v := range tags {
 			processTags[k] = v
 		}
-		processTags["pid"] = string(proc.PID)
+		processTags["pid"] = strconv.Itoa(int(proc.PID))
 		processTags["name"] = proc.Name
 
 		processFields := map[string]interface{}{
